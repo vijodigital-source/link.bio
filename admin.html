@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — Link na Bio</title>
+<meta name="robots" content="noindex,nofollow">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1a1d23;--mut:#6b7280;--bd:#e3e6eb;--ac:#2f5bea;--ok:#12805c;--warn:#b45309;--bad:#b42318}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--tx:#e8eaee;--mut:#9aa1ad;--bd:#2a2e37;--ac:#6d8cff;--ok:#3ecf9b;--warn:#f0a94a;--bad:#ff7b72}}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx)}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px}
+h1{font-size:20px;margin:0}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px}
+input,select,textarea,button{font:inherit;color:var(--tx)}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)}
+button{padding:9px 14px;border:1px solid var(--bd);border-radius:8px;background:var(--card);cursor:pointer}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+button.sm{padding:5px 9px;font-size:13px}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+#login{max-width:340px;margin:12vh auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat b{display:block;font-size:22px}.stat span{font-size:12px;color:var(--mut)}
+.tools{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}.tools input{flex:2;min-width:200px}.tools select{flex:1;min-width:140px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{font-size:12px;color:var(--mut);font-weight:600}
+.badge{padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--bd)}
+.b-pro{color:var(--ok);border-color:var(--ok)}.b-warn{color:var(--warn);border-color:var(--warn)}.b-bad{color:var(--bad);border-color:var(--bad)}
+.mut{color:var(--mut);font-size:12px}
+dialog{border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);width:min(440px,92vw);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.row{display:flex;gap:10px}.row>div{flex:1}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px}
+.ev{padding:8px 0;border-bottom:1px solid var(--bd);font-size:13px}
+</style>
+</head>
+<body>
+
+<div id="login" class="card" hidden>
+  <h1>Painel admin</h1>
+  <form id="loginForm">
+    <label for="email">E-mail</label><input id="email" type="email" required autocomplete="username">
+    <label for="password">Senha</label><input id="password" type="password" required autocomplete="current-password">
+    <p id="loginMsg" class="mut" style="color:var(--bad)"></p>
+    <button class="pri" style="width:100%">Entrar</button>
+  </form>
+</div>
+
+<div id="app" class="wrap" hidden>
+  <header><h1>Clientes e planos</h1><button id="logout" class="sm">Sair</button></header>
+  <div class="stats" id="stats"></div>
+  <div class="tools">
+    <input id="q" placeholder="Buscar por e-mail, nome ou slug">
+    <select id="filter">
+      <option value="all">Todos</option><option value="pro">Pro ativos</option><option value="free">Gratuitos</option>
+      <option value="past_due">Inadimplentes</option><option value="blocked">Bloqueados</option>
+    </select>
+  </div>
+  <div class="card tbl">
+    <table>
+      <thead><tr><th>Cliente</th><th>Slug</th><th>Plano</th><th>Vencimento</th><th>Links</th><th>Cliques</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<dialog id="dlg">
+  <h1 id="dlgTitle" style="font-size:17px"></h1>
+  <form id="editForm">
+    <div class="row">
+      <div><label for="plan">Plano</label><select id="plan"><option value="free">Gratuito</option><option value="pro">Pro</option></select></div>
+      <div><label for="status">Status</label><select id="status"><option value="active">Ativo</option><option value="past_due">Inadimplente</option><option value="blocked">Bloqueado</option></select></div>
+    </div>
+    <label for="expires">Vencimento (vazio = sem vencimento)</label>
+    <div class="row"><input id="expires" type="date"><button type="button" id="plus30" class="sm">+30 dias</button></div>
+    <label for="reason">Motivo (obrigatório)</label>
+    <textarea id="reason" rows="2" required placeholder="Ex.: Pix recebido fora do Asaas, cortesia parceiro"></textarea>
+    <div class="acts"><button type="button" id="cancel">Cancelar</button><button class="pri">Salvar</button></div>
+  </form>
+</dialog>
+
+<dialog id="hist">
+  <h1 style="font-size:17px">Histórico de planos</h1>
+  <div id="histBody"></div>
+  <div class="acts"><button id="histClose">Fechar</button></div>
+</dialog>
+
+<div id="toast" hidden></div>
+
+<script>
+// ===== CONFIGURAÇÃO =====
+const SUPABASE_URL = 'https://qbbqlsimsmuhmoaxrgps.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFiYnFsc2ltc211aG1vYXhyZ3BzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzE1NTAsImV4cCI6MjEwNjY0NzU1MH0.6VePjP5kVCBuoJgkl-yNwnEz9q7xswETHGPG_x7rzPQ';   // pública; a proteção é feita pelo RLS
+const PRECO_MENSAL = 24.90;                          // usado só no cálculo do MRR estimado
+// ========================
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDate = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+let clients = [], editId = null;
+
+function toast(m){ const t=$('#toast'); t.textContent=m; t.hidden=false; setTimeout(()=>t.hidden=true,3200); }
+function showLogin(msg){ $('#app').hidden=true; $('#login').hidden=false; $('#loginMsg').textContent=msg||''; }
+
+async function enter(){
+  const { data:{ user } } = await db.auth.getUser();
+  if(!user) return showLogin();
+  const { data:me } = await db.from('profiles').select('role').eq('id', user.id).single();
+  if(me?.role !== 'admin'){ await db.auth.signOut(); return showLogin('Acesso restrito a administradores.'); }
+  $('#login').hidden=true; $('#app').hidden=false; load();
+}
+
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault();
+  const { error } = await db.auth.signInWithPassword({ email:$('#email').value.trim(), password:$('#password').value });
+  error ? showLogin('E-mail ou senha inválidos.') : enter();
+};
+$('#logout').onclick = async () => { await db.auth.signOut(); showLogin(); };
+
+async function load(){
+  const { data, error } = await db.from('admin_clients').select('*').order('created_at',{ascending:false});
+  if(error) return toast('Erro ao carregar: '+error.message);
+  clients = data; render();
+}
+
+function render(){
+  const pro = clients.filter(c=>c.pro_ativo);
+  const mrr = pro.filter(c=>c.asaas_subscription_id).length * PRECO_MENSAL;
+  const st = [
+    ['Contas', clients.length],
+    ['Pro ativos', pro.length],
+    ['Gratuitos', clients.length - pro.length],
+    ['Inadimplentes', clients.filter(c=>c.status==='past_due').length],
+    ['MRR estimado', 'R$ '+mrr.toLocaleString('pt-BR',{minimumFractionDigits:2})]
+  ];
+  $('#stats').innerHTML = st.map(([l,v])=>`<div class="card stat"><b>${esc(v)}</b><span>${l}</span></div>`).join('');
+
+  const q = $('#q').value.toLowerCase(), f = $('#filter').value;
+  const list = clients.filter(c=>{
+    const hit = (c.email+' '+(c.name||'')+' '+(c.slug||'')).toLowerCase().includes(q);
+    const ok = f==='all' || (f==='pro'&&c.pro_ativo) || (f==='free'&&!c.pro_ativo) || (f==='past_due'&&c.status==='past_due') || (f==='blocked'&&c.status==='blocked');
+    return hit && ok;
+  });
+  $('#rows').innerHTML = list.map(c=>{
+    const plan = c.pro_ativo ? '<span class="badge b-pro">Pro</span>' : '<span class="badge">Gratuito</span>';
+    const sts = c.status==='past_due' ? ' <span class="badge b-warn">Inadimplente</span>' : c.status==='blocked' ? ' <span class="badge b-bad">Bloqueado</span>' : '';
+    return `<tr>
+      <td>${esc(c.name||'—')}<div class="mut">${esc(c.email)}</div></td>
+      <td>${esc(c.slug||'—')}</td><td>${plan}${sts}</td>
+      <td>${c.plan==='pro'&&!c.plan_expires_at?'Sem vencimento':fmtDate(c.plan_expires_at)}</td>
+      <td>${c.total_links}</td><td>${c.total_cliques}</td>
+      <td><button class="sm" data-edit="${esc(c.id)}">Alterar</button> <button class="sm" data-hist="${esc(c.id)}">Histórico</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="mut">Nenhum cliente encontrado.</td></tr>';
+}
+$('#q').oninput = render; $('#filter').onchange = render;
+
+$('#rows').onclick = async e => {
+  const ed = e.target.dataset.edit, hi = e.target.dataset.hist;
+  if(ed){
+    const c = clients.find(x=>x.id===ed); editId = ed;
+    $('#dlgTitle').textContent = c.email;
+    $('#plan').value = c.plan; $('#status').value = c.status;
+    $('#expires').value = c.plan_expires_at ? c.plan_expires_at.slice(0,10) : '';
+    $('#reason').value = ''; $('#dlg').showModal();
+  }
+  if(hi){
+    const { data, error } = await db.from('plan_events').select('*').eq('profile_id',hi).order('created_at',{ascending:false}).limit(20);
+    if(error) return toast('Erro: '+error.message);
+    $('#histBody').innerHTML = data.length ? data.map(v=>`<div class="ev"><b>${esc(v.old_plan||'—')} → ${esc(v.new_plan)}</b> · ${esc(v.source)}<div class="mut">${new Date(v.created_at).toLocaleString('pt-BR')} · venc. ${fmtDate(v.expires_at)} · ${esc(v.reason||'')}</div></div>`).join('') : '<p class="mut">Sem alterações registradas.</p>';
+    $('#hist').showModal();
+  }
+};
+
+$('#plus30').onclick = () => { const d=new Date(); d.setDate(d.getDate()+30); $('#expires').value=d.toISOString().slice(0,10); };
+$('#cancel').onclick = () => $('#dlg').close();
+$('#histClose').onclick = () => $('#hist').close();
+
+$('#editForm').onsubmit = async e => {
+  e.preventDefault();
+  const d = $('#expires').value;
+  const { error } = await db.rpc('admin_set_plan', {
+    p_profile: editId, p_plan: $('#plan').value, p_status: $('#status').value,
+    p_expires: d ? new Date(d+'T23:59:59-03:00').toISOString() : null,
+    p_reason: $('#reason').value.trim()
+  });
+  if(error) return toast('Erro: '+error.message);
+  $('#dlg').close(); toast('Plano atualizado'); load();
+};
+
+enter();
+</script>
+</body>
+</html>
